@@ -44,22 +44,42 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.util.Iterator;
+import java.util.List;
+import java.util.logging.Logger;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriInfo;
 
+import org.apache.commons.fileupload.FileItem;
+import org.apache.commons.fileupload.FileItemFactory;
+import org.apache.commons.fileupload.FileUploadException;
+import org.apache.commons.fileupload.disk.DiskFileItemFactory;
+import org.apache.commons.fileupload.servlet.ServletFileUpload;
 import org.glassfish.jersey.media.multipart.FormDataParam;
 import org.glassfish.jersey.media.multipart.FormDataContentDisposition;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.springframework.http.HttpRequest;
 
 /**
  * @author Michal Gajdos (michal.gajdos at oracle.com)
  */
 @Path("/form")
 public class MultiPartResource {
+	
+	private static Logger log = Logger.getLogger(MultiPartResource.class.toString());
 
+	private File fileUploadPath = new File("C://uploaded/");
+	
 /*    @POST
     @Path("part")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
@@ -80,36 +100,150 @@ public class MultiPartResource {
 	@Path("/upload")
 	@Consumes(MediaType.MULTIPART_FORM_DATA)
 	public Response uploadFile(
+		@FormDataParam("files[]") InputStream uploadedInputStream,
+		@FormDataParam("files[]") FormDataContentDisposition fileDetail,
+		@Context UriInfo ui) {
+ 
+		String filename = fileDetail.getFileName();
+		try {
+			log.info("Uploaded file, GBK: " + new String(fileDetail.getFileName().getBytes("iso8859-1"), "UTF-8"));
+			filename = new String(fileDetail.getFileName().getBytes("iso8859-1"), "UTF-8");
+		} catch (UnsupportedEncodingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		String uploadedFileLocation = "C://uploaded/" + filename;
+ 
+		log.info("Uploaded file: " + fileDetail.getFileName());
+		
+		writeToFile(uploadedInputStream, uploadedFileLocation);
+		
+		JSONArray json = new JSONArray();
+	    JSONObject jsono = new JSONObject();
+	    jsono.put("name", filename);
+	    jsono.put("size", fileDetail.getSize());
+	    jsono.put("url", "upload?getfile=" + filename);
+	    jsono.put("thumbnail_url", "upload?getthumb=" + filename);
+	    jsono.put("delete_url", "upload?delfile=" + filename);
+	    jsono.put("delete_type", "GET");
+	    json.put(jsono);
+ 
+		return Response.status(200).entity(json.toString()).build();
+	}
+	
+	@POST
+	@Path("/upload1")
+	@Consumes(MediaType.MULTIPART_FORM_DATA)
+	@Produces(MediaType.APPLICATION_JSON)
+	public Response uploadFile(
+		@FormDataParam("files[]") InputStream uploadedInputStream,
+		@FormDataParam("files[]") FormDataContentDisposition fileDetail,
+		@Context HttpServletRequest request) {
+ 
+		if (!ServletFileUpload.isMultipartContent(request)) {
+            throw new IllegalArgumentException("Request is not multipart, please 'multipart/form-data' enctype for your form.");
+        }
+
+        ServletFileUpload uploadHandler = new ServletFileUpload(new DiskFileItemFactory());
+        JSONArray json = new JSONArray();
+        try {
+            List<FileItem> items = uploadHandler.parseRequest(request);
+            for (FileItem item : items) {
+                if (!item.isFormField()) {
+                        File file = new File(fileUploadPath, item.getName());
+                        item.write(file);
+                        JSONObject jsono = new JSONObject();
+                        jsono.put("name", item.getName());
+                        jsono.put("size", item.getSize());
+                        jsono.put("url", "upload?getfile=" + item.getName());
+                        jsono.put("thumbnail_url", "upload?getthumb=" + item.getName());
+                        jsono.put("delete_url", "upload?delfile=" + item.getName());
+                        jsono.put("delete_type", "GET");
+                        json.put(jsono);
+                }
+            }
+        } catch (FileUploadException e) {
+                throw new RuntimeException(e);
+        } catch (Exception e) {
+                throw new RuntimeException(e);
+        } finally {
+        }
+
+ 
+		return Response.status(200).entity(json.toString()).type(MediaType.APPLICATION_JSON_TYPE).build();
+	}
+	
+	@POST
+	@Path("/upload2")
+	@Consumes(MediaType.MULTIPART_FORM_DATA)
+	public Response uploadFile2(
 		@FormDataParam("file") InputStream uploadedInputStream,
 		@FormDataParam("file") FormDataContentDisposition fileDetail) {
  
 		String uploadedFileLocation = "C://uploaded/" + fileDetail.getFileName();
  
+		log.info("Uploaded file: " + fileDetail.getFileName());
+		String filename = fileDetail.getFileName();
+		try {
+			log.info("Uploaded file, GBK: " + new String(fileDetail.getFileName().getBytes("iso8859-1"), "UTF-8"));
+			filename = new String(fileDetail.getFileName().getBytes("iso8859-1"), "UTF-8");
+		} catch (UnsupportedEncodingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
 		writeToFile(uploadedInputStream, uploadedFileLocation);
+		
+		JSONArray json = new JSONArray();
+	    JSONObject jsono = new JSONObject();
+	    jsono.put("name", filename);
+	    jsono.put("size", fileDetail.getSize());
+	    jsono.put("url", "upload?getfile=" + filename);
+	    jsono.put("thumbnail_url", "upload?getthumb=" + filename);
+	    jsono.put("delete_url", "upload?delfile=" + filename);
+	    jsono.put("delete_type", "GET");
+	    json.put(jsono);
  
-		return Response.status(200).build();
- 
+		return Response.status(200).entity(json.toString()).build();
 	}
+	
 	
 	// save uploaded file to new location
 		private void writeToFile(InputStream uploadedInputStream,
 			String uploadedFileLocation) {
-	 
+			OutputStream out = null;
 			try {
-				OutputStream out = new FileOutputStream(new File(
+				out = new FileOutputStream(new File(
 						uploadedFileLocation));
 				int read = 0;
 				byte[] bytes = new byte[1024];
 	 
-				out = new FileOutputStream(new File(uploadedFileLocation));
 				while ((read = uploadedInputStream.read(bytes)) != -1) {
 					out.write(bytes, 0, read);
 				}
 				out.flush();
-				out.close();
+				
 			} catch (IOException e) {
 	 
 				e.printStackTrace();
+			} finally{
+				if(uploadedInputStream != null){
+					try {
+						uploadedInputStream.close();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+				
+				if(out != null){
+					try {
+						out.close();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
 			}
 	 
 		}
